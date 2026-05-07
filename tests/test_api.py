@@ -193,6 +193,41 @@ def test_repeated_draft_reuses_existing_drafted_suggestion(tmp_path):
     assert summary["drafted_suggestions"] == 1
 
 
+def test_dismissed_suggestion_is_not_resurfaced_as_new_draft(tmp_path):
+    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/wake",
+            json={
+                "reason": "scheduled",
+                "dry_run": True,
+                "event": {"topic": "action tiers"},
+            },
+        ).json()
+        suggestion_id = first["recommended_action"]["suggestion_id"]
+        dismissed = client.post(f"/suggestions/{suggestion_id}/dismiss")
+        second = client.post(
+            "/wake",
+            json={
+                "reason": "scheduled",
+                "dry_run": True,
+                "event": {"topic": "action tiers"},
+            },
+        ).json()
+        drafted = client.get("/suggestions?status=drafted")
+        summary = client.get("/trial-summary").json()
+
+    assert dismissed.status_code == 200
+    assert second["recommended_action"]["suggestion_id"] == suggestion_id
+    assert second["recommended_action"]["existing_suggestion_status"] == "dismissed"
+    assert drafted.json()["suggestions"] == []
+    assert summary["counts"]["wake_cycles"] == 2
+    assert summary["counts"]["suggestions"] == 1
+    assert summary["drafted_suggestions"] == 0
+    assert summary["dismissed_suggestions"] == 1
+
+
 def test_missing_suggestion_review_returns_404(tmp_path):
     app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
 

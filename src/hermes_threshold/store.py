@@ -129,15 +129,21 @@ class SQLiteStore:
             if action:
                 title = str(action.get("title", "Untitled suggestion"))
                 description = str(action.get("description", ""))
-                suggestion_id = action.get("suggestion_id") or self._find_drafted_suggestion_id(
+                existing_suggestion = self._find_existing_suggestion(
                     db,
                     title,
                     description,
                 )
+                provided_suggestion_id = action.get("suggestion_id")
+                suggestion_id = provided_suggestion_id or existing_suggestion["suggestion_id"]
                 if suggestion_id is None:
                     suggestion_id = f"suggestion_{uuid.uuid4().hex}"
                     should_insert_suggestion = True
+                elif provided_suggestion_id and existing_suggestion["suggestion_id"] is None:
+                    should_insert_suggestion = True
                 action["suggestion_id"] = suggestion_id
+                if existing_suggestion["status"]:
+                    action["existing_suggestion_status"] = existing_suggestion["status"]
 
             db.execute(
                 """
@@ -202,27 +208,33 @@ class SQLiteStore:
                     ),
                 )
 
-    def _find_drafted_suggestion_id(
+    def _find_existing_suggestion(
         self,
         db: sqlite3.Connection,
         title: str,
         description: str,
-    ) -> str | None:
+    ) -> dict[str, str | None]:
         row = db.execute(
             """
-            SELECT suggestion_id
+            SELECT suggestion_id, status
             FROM suggestions
-            WHERE status = 'drafted'
-              AND title = ?
+            WHERE title = ?
               AND description = ?
-            ORDER BY created_at DESC
+            ORDER BY
+              CASE status
+                WHEN 'drafted' THEN 0
+                WHEN 'dismissed' THEN 1
+                WHEN 'approved' THEN 2
+                ELSE 3
+              END,
+              created_at DESC
             LIMIT 1
             """,
             (title, description),
         ).fetchone()
         if row is None:
-            return None
-        return str(row["suggestion_id"])
+            return {"suggestion_id": None, "status": None}
+        return {"suggestion_id": str(row["suggestion_id"]), "status": str(row["status"])}
 
     def record_feedback(self, feedback: FeedbackRequest) -> str:
         feedback_id = f"feedback_{uuid.uuid4().hex}"
