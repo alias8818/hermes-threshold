@@ -7,6 +7,7 @@
   const hooks = SDK.hooks;
   const ui = SDK.components;
   const fetchJSON = SDK.fetchJSON;
+  const cn = SDK.utils.cn;
 
   const e = React.createElement;
 
@@ -112,9 +113,25 @@
   function Stat({ label, value }) {
     return e(
       "div",
-      { className: "rounded-md border bg-background px-3 py-2" },
-      e("div", { className: "text-xs text-muted-foreground" }, label),
-      e("div", { className: "mt-1 text-2xl font-semibold tabular-nums" }, value),
+      { className: "flex flex-col gap-1 border border-border p-3" },
+      e("span", { className: "text-muted-foreground text-xs" }, label),
+      e("span", { className: "font-courier text-2xl tabular-nums" }, value),
+    );
+  }
+
+  function ActionButton({ children, disabled, onClick, variant }) {
+    return e(
+      ui.Button,
+      {
+        variant,
+        disabled,
+        onClick,
+        className: cn(
+          "inline-flex items-center justify-center gap-2 border border-border bg-background/40 px-4 py-2",
+          "text-sm font-courier transition-colors hover:bg-foreground/10 cursor-pointer",
+        ),
+      },
+      children,
     );
   }
 
@@ -129,24 +146,24 @@
     const whyNow = group.whyNow || fallbackWhyNow(group);
     return e(
       "div",
-      { className: "rounded-md border bg-background p-4" },
+      { className: "border border-border p-3" },
       e(
         "div",
-        { className: "flex flex-wrap items-start justify-between gap-4" },
+        { className: "flex flex-wrap items-start justify-between gap-6" },
         e(
           "div",
-          { className: "min-w-0 flex-1 space-y-2" },
+          { className: "flex min-w-0 flex-1 flex-col gap-3" },
           e(
             "div",
             { className: "flex flex-wrap items-center gap-2" },
-            e("div", { className: "text-sm font-medium" }, title),
+            e("span", { className: "font-medium" }, title),
             e(ui.Badge, { variant: recommendation.tone }, recommendation.label),
             e(ui.Badge, { variant: "secondary" }, copyLabel),
             e(ui.Badge, { variant: "outline" }, group.surface),
           ),
           e(
             "p",
-            { className: "text-sm font-medium" },
+            { className: "text-sm" },
             recommendation.reason,
           ),
           e(
@@ -156,23 +173,23 @@
           ),
           e(
             "div",
-            { className: "grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-2" },
+            { className: "grid gap-3 text-sm md:grid-cols-2" },
             e(
               "div",
-              null,
-              e("div", { className: "font-medium" }, "What this idea is"),
-              e("p", { className: "mt-1 text-muted-foreground" }, detail),
+              { className: "flex flex-col gap-1 border border-border p-3" },
+              e("span", { className: "font-medium" }, "What this idea is"),
+              e("span", { className: "text-muted-foreground text-xs" }, detail),
             ),
             e(
               "div",
-              null,
-              e("div", { className: "font-medium" }, "Why it appeared"),
-              e("p", { className: "mt-1 text-muted-foreground" }, whyNow),
+              { className: "flex flex-col gap-1 border border-border p-3" },
+              e("span", { className: "font-medium" }, "Why it appeared"),
+              e("span", { className: "text-muted-foreground text-xs" }, whyNow),
             ),
           ),
           e(
             "div",
-            { className: "rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground" },
+            { className: "border border-border p-3 text-xs text-muted-foreground" },
             `Grouped as the same idea because title, summary, surface, and risk score match. Latest cycle: ${latest.cycle_id}.`,
           ),
           e(
@@ -185,28 +202,22 @@
         ),
         e(
           "div",
-          { className: "flex shrink-0 flex-col items-stretch gap-2" },
-          e(
-            ui.Button,
-            {
-              size: "sm",
-              disabled: busy,
-              onClick: () => onApprove(latest.suggestion_id),
-            },
+          { className: "flex w-56 shrink-0 flex-col items-stretch gap-2" },
+          e(ActionButton, {
+            disabled: busy,
+            onClick: () => onApprove(latest.suggestion_id),
+          },
             "Approve newest",
           ),
-          e("div", { className: "max-w-56 text-xs text-muted-foreground" }, recommendation.approveEffect),
-          e(
-            ui.Button,
-            {
-              size: "sm",
-              variant: "outline",
-              disabled: busy,
-              onClick: () => onDismissGroup(group.suggestions.map((item) => item.suggestion_id)),
-            },
+          e("span", { className: "text-xs text-muted-foreground" }, recommendation.approveEffect),
+          e(ActionButton, {
+            variant: "outline",
+            disabled: busy,
+            onClick: () => onDismissGroup(group.suggestions.map((item) => item.suggestion_id)),
+          },
             copyCount === 1 ? "Dismiss" : "Dismiss group",
           ),
-          e("div", { className: "max-w-56 text-xs text-muted-foreground" }, recommendation.dismissEffect),
+          e("span", { className: "text-xs text-muted-foreground" }, recommendation.dismissEffect),
         ),
       ),
     );
@@ -274,43 +285,69 @@
 
     return e(
       "div",
-      { className: "space-y-4 p-1" },
+      { className: "flex flex-col gap-6" },
       e(
-        "div",
-        { className: "flex flex-wrap items-center justify-between gap-3" },
+        ui.Card,
+        null,
         e(
-          "div",
+          ui.CardHeader,
           null,
-          e("h2", { className: "text-xl font-semibold tracking-normal" }, "Hermes Threshold"),
+          e(
+            "div",
+            { className: "flex items-center gap-3" },
+            e(ui.CardTitle, { className: "text-lg" }, "Hermes Threshold"),
+            e(ui.Badge, { variant: "outline" }, "trial"),
+          ),
+        ),
+        e(
+          ui.CardContent,
+          { className: "flex flex-col gap-4" },
           e(
             "p",
             { className: "text-sm text-muted-foreground" },
-            "Controlled-trial wake drafts. Nothing here has been sent or executed.",
+            "Controlled-trial wake drafts. Nothing here has been sent or executed. Most repeated controlled-trial groups should be dismissed; approve only when the idea itself is useful enough to keep as Hermes behavior work.",
+          ),
+          e(
+            "div",
+            { className: "flex items-center gap-3" },
+            e(ActionButton, { onClick: load, disabled: loading }, loading ? "Refreshing..." : "Refresh"),
+            error && e("span", { className: "text-sm font-courier text-muted-foreground" }, error),
           ),
         ),
-        e(ui.Button, { variant: "outline", onClick: load, disabled: loading }, loading ? "Refreshing" : "Refresh"),
-      ),
-      e(
-        "div",
-        { className: "rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground" },
-        "Most repeated controlled-trial groups should be dismissed. Approve only when the idea itself is useful enough to keep as Hermes behavior work.",
-      ),
-      error ? e("div", { className: "rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" }, error) : null,
-      e(
-        "div",
-        { className: "grid gap-3 md:grid-cols-5" },
-        e(Stat, { label: "Wake cycles", value: count(summary, "wake_cycles") }),
-        e(Stat, { label: "Drafts", value: count(summary, "drafted_suggestions") }),
-        e(Stat, { label: "Approved", value: count(summary, "approved_suggestions") }),
-        e(Stat, { label: "Dismissed", value: count(summary, "dismissed_suggestions") }),
-        e(Stat, { label: "Useful", value: count(summary, "useful_feedback") }),
       ),
       e(
         ui.Card,
         null,
         e(
           ui.CardHeader,
-          { className: "pb-3" },
+          null,
+          e(
+            "div",
+            { className: "flex items-center gap-3" },
+            e(ui.CardTitle, { className: "text-base" }, "Trial Counters"),
+            e(ui.Badge, { variant: "outline" }, loading ? "loading" : "live"),
+          ),
+        ),
+        e(
+          ui.CardContent,
+          null,
+          e(
+            "div",
+            { className: "grid gap-3 text-sm md:grid-cols-5" },
+            e(Stat, { label: "Wake cycles", value: count(summary, "wake_cycles") }),
+            e(Stat, { label: "Drafts", value: count(summary, "drafted_suggestions") }),
+            e(Stat, { label: "Approved", value: count(summary, "approved_suggestions") }),
+            e(Stat, { label: "Dismissed", value: count(summary, "dismissed_suggestions") }),
+            e(Stat, { label: "Useful", value: count(summary, "useful_feedback") }),
+          ),
+        ),
+      ),
+      e(
+        ui.Card,
+        null,
+        e(
+          ui.CardHeader,
+          null,
           e(
             "div",
             { className: "flex items-center justify-between gap-3" },
@@ -325,19 +362,23 @@
         ),
         e(
           ui.CardContent,
-          { className: "space-y-3" },
+          null,
           loading
             ? e("div", { className: "text-sm text-muted-foreground" }, "Loading suggestions...")
             : groups.length === 0
               ? e("div", { className: "text-sm text-muted-foreground" }, "No draft suggestions are waiting for review.")
-              : groups.map((group) =>
-                  e(ReviewGroup, {
-                    key: group.key,
-                    group,
-                    busy: group.suggestions.some((item) => busyId && busyId.includes(item.suggestion_id)),
-                    onApprove: (id) => review(id, "approve"),
-                    onDismissGroup: dismissGroup,
-                  }),
+              : e(
+                  "div",
+                  { className: "grid gap-3 text-sm" },
+                  groups.map((group) =>
+                    e(ReviewGroup, {
+                      key: group.key,
+                      group,
+                      busy: group.suggestions.some((item) => busyId && busyId.includes(item.suggestion_id)),
+                      onApprove: (id) => review(id, "approve"),
+                      onDismissGroup: dismissGroup,
+                    }),
+                  ),
                 ),
         ),
       ),
