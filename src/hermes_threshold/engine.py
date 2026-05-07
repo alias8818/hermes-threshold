@@ -108,6 +108,10 @@ class ThresholdEngine:
                 {
                     "title": "Create approval gate note",
                     "description": "Draft an approval-required action record before Hermes touches external systems.",
+                    "detail": "Create a short record that names the external system, the intended action, the risk, and the approval required before Hermes can proceed.",
+                    "why_now": "The wake event mentioned approval-sensitive or external action context.",
+                    "acceptance_hint": "Approve only if this approval gate should become part of the Hermes behavior backlog.",
+                    "dismissal_hint": "Dismiss if this is just test noise or not relevant to the current Hermes policy work.",
                     "value_score": 8,
                     "novelty_score": 6,
                     "risk_score": 5,
@@ -119,6 +123,10 @@ class ThresholdEngine:
                 {
                     "title": "Lower proactivity",
                     "description": "Record a restraint adjustment and avoid user-facing outreach.",
+                    "detail": "Capture that Hermes should back off in this context and prefer internal reflection over notifications or direct outreach.",
+                    "why_now": "The wake event suggested annoyance, stress, or potentially intrusive behavior.",
+                    "acceptance_hint": "Approve if Hermes should remember this as a restraint rule.",
+                    "dismissal_hint": "Dismiss if the signal was not real user discomfort.",
                     "value_score": 7,
                     "novelty_score": 5,
                     "risk_score": 7,
@@ -129,6 +137,10 @@ class ThresholdEngine:
             {
                 "title": "Define autonomy action tiers",
                 "description": "Draft the boundary between silent reflection, drafts, notifications, approvals, and forbidden actions.",
+                "detail": "This is a behavior-design note: define which Hermes actions can happen silently, which should become drafts, which may notify you, which require approval, and which are forbidden.",
+                "why_now": "The controlled-trial scheduler is exercising the default low-risk candidate path for autonomy policy design.",
+                "acceptance_hint": "Approve if you want to preserve this policy-design task for Hermes behavior work.",
+                "dismissal_hint": "Dismiss if this repeated trial item is not useful or has already been handled.",
                 "value_score": 8,
                 "novelty_score": 6,
                 "risk_score": 2,
