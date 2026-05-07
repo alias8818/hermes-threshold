@@ -1,0 +1,13 @@
+{
+  "name": "hermes-threshold",
+  "label": "Threshold",
+  "description": "Review Hermes Threshold suggestions and controlled-trial counters.",
+  "icon": "Gauge",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/threshold",
+    "position": "after:plugins"
+  },
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}
