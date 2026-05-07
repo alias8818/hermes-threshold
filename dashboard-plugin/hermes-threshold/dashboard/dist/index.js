@@ -15,7 +15,9 @@
   }
 
   function count(summary, key) {
-    return (summary && summary.counts && summary.counts[key]) || 0;
+    if (!summary) return 0;
+    if (Object.prototype.hasOwnProperty.call(summary, key)) return summary[key] || 0;
+    return (summary.counts && summary.counts[key]) || 0;
   }
 
   function shortText(value, fallback) {
