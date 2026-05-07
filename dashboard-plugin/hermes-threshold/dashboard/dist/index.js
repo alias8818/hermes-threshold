@@ -72,6 +72,25 @@
     });
   }
 
+  function recommendationFor(group) {
+    if (group.suggestions.length > 1) {
+      return {
+        label: "Recommended: Dismiss group",
+        tone: "secondary",
+        reason: "This is repeated controlled-trial output, not 22 separate things that need your attention.",
+        approveEffect: "Approve newest keeps one copy as a useful behavior-design note.",
+        dismissEffect: "Dismiss group clears these repeated draft rows from the review queue.",
+      };
+    }
+    return {
+      label: "Review",
+      tone: "outline",
+      reason: "This is a single unsent draft from a wake decision.",
+      approveEffect: "Approve keeps it for Hermes behavior work.",
+      dismissEffect: "Dismiss removes it from the review queue.",
+    };
+  }
+
   function Stat({ label, value }) {
     return e(
       "div",
@@ -87,6 +106,7 @@
     const title = group.title || latest.suggestion_id;
     const rationale = group.description || latest.description || "";
     const copyLabel = copyCount === 1 ? "1 draft" : `${copyCount} copies`;
+    const recommendation = recommendationFor(group);
     return e(
       "div",
       { className: "rounded-md border bg-background p-4" },
@@ -100,8 +120,14 @@
             "div",
             { className: "flex flex-wrap items-center gap-2" },
             e("div", { className: "text-sm font-medium" }, title),
+            e(ui.Badge, { variant: recommendation.tone }, recommendation.label),
             e(ui.Badge, { variant: "secondary" }, copyLabel),
             e(ui.Badge, { variant: "outline" }, group.surface),
+          ),
+          e(
+            "p",
+            { className: "text-sm font-medium" },
+            recommendation.reason,
           ),
           e(
             "p",
@@ -118,7 +144,7 @@
         ),
         e(
           "div",
-          { className: "flex shrink-0 flex-wrap items-center gap-2" },
+          { className: "flex shrink-0 flex-col items-stretch gap-2" },
           e(
             ui.Button,
             {
@@ -128,6 +154,7 @@
             },
             "Approve newest",
           ),
+          e("div", { className: "max-w-56 text-xs text-muted-foreground" }, recommendation.approveEffect),
           e(
             ui.Button,
             {
@@ -138,6 +165,7 @@
             },
             copyCount === 1 ? "Dismiss" : "Dismiss group",
           ),
+          e("div", { className: "max-w-56 text-xs text-muted-foreground" }, recommendation.dismissEffect),
         ),
       ),
     );
@@ -224,7 +252,7 @@
       e(
         "div",
         { className: "rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground" },
-        "Approve the newest copy when the idea is useful enough to keep for Hermes behavior work. Dismiss a group when it is repeated trial noise or not worth preserving.",
+        "Most repeated controlled-trial groups should be dismissed. Approve only when the idea itself is useful enough to keep as Hermes behavior work.",
       ),
       error ? e("div", { className: "rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" }, error) : null,
       e(
