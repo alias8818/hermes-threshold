@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 from fastapi.testclient import TestClient
 
 from hermes_threshold.app import create_app
@@ -216,3 +218,4 @@ def test_scheduler_job_uses_draftable_trial_event(tmp_path):
 
     assert len(jobs) == 1
     assert jobs[0].id == "random_wake"
+    assert inspect.iscoroutinefunction(jobs[0].func)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -40,19 +39,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 resolved_settings.scheduler_interval_seconds
                 or resolved_settings.scheduler_interval_hours * 3600
             )
-            scheduler.add_job(
-                lambda: asyncio.create_task(
-                    engine.run_wake_cycle(
-                        WakeRequest(
-                            reason="scheduled",
-                            dry_run=True,
-                            event={
-                                "source": "scheduler",
-                                "note": resolved_settings.scheduler_event_note,
-                            },
-                        )
+
+            async def scheduled_wake() -> None:
+                await engine.run_wake_cycle(
+                    WakeRequest(
+                        reason="scheduled",
+                        dry_run=True,
+                        event={
+                            "source": "scheduler",
+                            "note": resolved_settings.scheduler_event_note,
+                        },
                     )
-                ),
+                )
+
+            scheduler.add_job(
+                scheduled_wake,
                 trigger="interval",
                 seconds=interval_seconds,
                 jitter=resolved_settings.scheduler_jitter_seconds,
