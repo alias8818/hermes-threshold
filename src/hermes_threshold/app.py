@@ -36,12 +36,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store.init_schema()
         if resolved_settings.scheduler_enabled:
+            interval_seconds = (
+                resolved_settings.scheduler_interval_seconds
+                or resolved_settings.scheduler_interval_hours * 3600
+            )
             scheduler.add_job(
                 lambda: asyncio.create_task(
-                    engine.run_wake_cycle(WakeRequest(reason="scheduled", dry_run=True))
+                    engine.run_wake_cycle(
+                        WakeRequest(
+                            reason="scheduled",
+                            dry_run=True,
+                            event={
+                                "source": "scheduler",
+                                "note": resolved_settings.scheduler_event_note,
+                            },
+                        )
+                    )
                 ),
                 trigger="interval",
-                hours=resolved_settings.scheduler_interval_hours,
+                seconds=interval_seconds,
                 jitter=resolved_settings.scheduler_jitter_seconds,
                 id="random_wake",
                 replace_existing=True,

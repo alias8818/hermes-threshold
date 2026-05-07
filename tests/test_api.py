@@ -199,3 +199,20 @@ def test_trial_summary_counts_review_and_feedback(tmp_path):
     assert payload["counts"]["wake_cycles"] == 1
     assert payload["dismissed_suggestions"] == 1
     assert payload["annoyance_feedback"] == 1
+
+
+def test_scheduler_job_uses_draftable_trial_event(tmp_path):
+    app = create_app(
+        Settings(
+            db_path=tmp_path / "test.sqlite3",
+            scheduler_enabled=True,
+            scheduler_interval_seconds=3600,
+            scheduler_jitter_seconds=0,
+        )
+    )
+
+    with TestClient(app):
+        jobs = app.state.scheduler.get_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].id == "random_wake"

@@ -29,7 +29,9 @@ class Settings:
     db_path: Path = Path("data/hermes_threshold.sqlite3")
     scheduler_enabled: bool = True
     scheduler_interval_hours: int = 3
+    scheduler_interval_seconds: int | None = None
     scheduler_jitter_seconds: int = 1800
+    scheduler_event_note: str = "Periodic controlled-trial wake for Hermes Threshold action-tier drafting."
     max_notifications_per_day: int = 1
     quiet_hours_start: int = 21
     quiet_hours_end: int = 7
@@ -57,9 +59,17 @@ class Settings:
                 "HERMES_THRESHOLD_SCHEDULER_INTERVAL_HOURS",
                 cls.scheduler_interval_hours,
             ),
+            scheduler_interval_seconds=(
+                _env_int("HERMES_THRESHOLD_SCHEDULER_INTERVAL_SECONDS", 0)
+                or None
+            ),
             scheduler_jitter_seconds=_env_int(
                 "HERMES_THRESHOLD_SCHEDULER_JITTER_SECONDS",
                 cls.scheduler_jitter_seconds,
+            ),
+            scheduler_event_note=os.getenv(
+                "HERMES_THRESHOLD_SCHEDULER_EVENT_NOTE",
+                cls.scheduler_event_note,
             ),
             max_notifications_per_day=_env_int(
                 "HERMES_THRESHOLD_MAX_NOTIFICATIONS_PER_DAY",

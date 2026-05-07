@@ -119,3 +119,13 @@ Track:
 - drafted suggestion count
 - dismissed or annoying suggestion count
 - approved or useful suggestion count
+
+For an accelerated local trial, set:
+
+```bash
+HERMES_THRESHOLD_SCHEDULER_INTERVAL_SECONDS=300
+HERMES_THRESHOLD_SCHEDULER_JITTER_SECONDS=0
+```
+
+The scheduler still uses `dry_run=true`, so it creates reviewable drafts without
+dispatching outbound messages.
