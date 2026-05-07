@@ -163,6 +163,36 @@ def test_suggestion_review_flow(tmp_path):
     assert approved_list.json()["suggestions"][0]["suggestion_id"] == suggestion_id
 
 
+def test_repeated_draft_reuses_existing_drafted_suggestion(tmp_path):
+    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/wake",
+            json={
+                "reason": "scheduled",
+                "dry_run": True,
+                "event": {"topic": "action tiers"},
+            },
+        ).json()
+        second = client.post(
+            "/wake",
+            json={
+                "reason": "scheduled",
+                "dry_run": True,
+                "event": {"topic": "action tiers"},
+            },
+        ).json()
+        drafted = client.get("/suggestions?status=drafted")
+        summary = client.get("/trial-summary").json()
+
+    assert first["recommended_action"]["suggestion_id"] == second["recommended_action"]["suggestion_id"]
+    assert len(drafted.json()["suggestions"]) == 1
+    assert summary["counts"]["wake_cycles"] == 2
+    assert summary["counts"]["suggestions"] == 1
+    assert summary["drafted_suggestions"] == 1
+
+
 def test_missing_suggestion_review_returns_404(tmp_path):
     app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
 

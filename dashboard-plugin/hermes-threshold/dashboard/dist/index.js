@@ -25,6 +25,53 @@
     return String(value).length > 180 ? `${String(value).slice(0, 177)}...` : String(value);
   }
 
+  function formatTime(value) {
+    if (!value) return "unknown time";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  function groupKey(suggestion) {
+    const payload = suggestion.payload || {};
+    return [
+      suggestion.title || "",
+      suggestion.description || "",
+      payload.surface || "",
+      payload.risk_score || "",
+    ].join("\n");
+  }
+
+  function groupSuggestions(suggestions) {
+    const groups = new Map();
+    for (const suggestion of suggestions) {
+      const key = groupKey(suggestion);
+      const current = groups.get(key) || {
+        key,
+        title: suggestion.title || suggestion.suggestion_id,
+        description: suggestion.description || "",
+        surface: (suggestion.payload && suggestion.payload.surface) || "draft",
+        riskScore: suggestion.payload && suggestion.payload.risk_score,
+        valueScore: suggestion.payload && suggestion.payload.value_score,
+        noveltyScore: suggestion.payload && suggestion.payload.novelty_score,
+        suggestions: [],
+      };
+      current.suggestions.push(suggestion);
+      groups.set(key, current);
+    }
+    return Array.from(groups.values()).map((group) => {
+      group.suggestions.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      group.latest = group.suggestions[0];
+      group.oldest = group.suggestions[group.suggestions.length - 1];
+      return group;
+    });
+  }
+
   function Stat({ label, value }) {
     return e(
       "div",
@@ -34,37 +81,52 @@
     );
   }
 
-  function SuggestionRow({ suggestion, onApprove, onDismiss, busy }) {
-    const title = suggestion.title || suggestion.suggestion_id;
-    const rationale = suggestion.rationale || suggestion.description || suggestion.reason || "";
+  function ReviewGroup({ group, onApprove, onDismissGroup, busy }) {
+    const latest = group.latest;
+    const copyCount = group.suggestions.length;
+    const title = group.title || latest.suggestion_id;
+    const rationale = group.description || latest.description || "";
+    const copyLabel = copyCount === 1 ? "1 draft" : `${copyCount} duplicate drafts`;
     return e(
       "div",
-      { className: "rounded-md border bg-background p-3" },
+      { className: "rounded-md border bg-background p-4" },
       e(
         "div",
-        { className: "flex flex-wrap items-start justify-between gap-3" },
+        { className: "flex flex-wrap items-start justify-between gap-4" },
         e(
           "div",
-          { className: "min-w-0 flex-1" },
-          e("div", { className: "truncate text-sm font-medium" }, title),
+          { className: "min-w-0 flex-1 space-y-2" },
           e(
             "div",
-            { className: "mt-1 text-xs text-muted-foreground" },
-            shortText(rationale, suggestion.suggestion_id),
+            { className: "flex flex-wrap items-center gap-2" },
+            e("div", { className: "text-sm font-medium" }, title),
+            e(ui.Badge, { variant: "secondary" }, copyLabel),
+            e(ui.Badge, { variant: "outline" }, group.surface),
+          ),
+          e(
+            "p",
+            { className: "text-sm text-muted-foreground" },
+            shortText(rationale, latest.suggestion_id),
+          ),
+          e(
+            "div",
+            { className: "grid gap-2 text-xs text-muted-foreground md:grid-cols-3" },
+            e("div", null, `Newest: ${formatTime(latest.created_at)}`),
+            e("div", null, `Oldest: ${formatTime(group.oldest.created_at)}`),
+            e("div", null, `Value ${group.valueScore || "?"} / Novelty ${group.noveltyScore || "?"} / Risk ${group.riskScore || "?"}`),
           ),
         ),
         e(
           "div",
-          { className: "flex shrink-0 items-center gap-2" },
-          e(ui.Badge, { variant: "secondary" }, suggestion.status || "drafted"),
+          { className: "flex shrink-0 flex-wrap items-center gap-2" },
           e(
             ui.Button,
             {
               size: "sm",
               disabled: busy,
-              onClick: () => onApprove(suggestion.suggestion_id),
+              onClick: () => onApprove(latest.suggestion_id),
             },
-            "Approve",
+            "Approve newest",
           ),
           e(
             ui.Button,
@@ -72,9 +134,9 @@
               size: "sm",
               variant: "outline",
               disabled: busy,
-              onClick: () => onDismiss(suggestion.suggestion_id),
+              onClick: () => onDismissGroup(group.suggestions.map((item) => item.suggestion_id)),
             },
-            "Dismiss",
+            copyCount === 1 ? "Dismiss" : "Dismiss group",
           ),
         ),
       ),
@@ -120,6 +182,26 @@
       }
     }
 
+    async function dismissGroup(ids) {
+      setBusyId(ids.join(","));
+      setError("");
+      try {
+        await api("/suggestions/batch-dismiss", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ suggestion_ids: ids }),
+        });
+        await load();
+      } catch (err) {
+        setError(err && err.message ? err.message : "Unable to dismiss suggestion group");
+      } finally {
+        setBusyId(null);
+      }
+    }
+
+    const groups = groupSuggestions(suggestions);
+    const duplicateCopies = suggestions.length - groups.length;
+
     return e(
       "div",
       { className: "space-y-4 p-1" },
@@ -133,10 +215,15 @@
           e(
             "p",
             { className: "text-sm text-muted-foreground" },
-            "Draft wake suggestions and controlled-trial counters.",
+            "Controlled-trial wake drafts. Nothing here has been sent or executed.",
           ),
         ),
         e(ui.Button, { variant: "outline", onClick: load, disabled: loading }, loading ? "Refreshing" : "Refresh"),
+      ),
+      e(
+        "div",
+        { className: "rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground" },
+        "Approve the newest copy when the idea is useful enough to keep for Hermes behavior work. Dismiss a group when it is repeated trial noise or not worth preserving.",
       ),
       error ? e("div", { className: "rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" }, error) : null,
       e(
@@ -157,8 +244,13 @@
           e(
             "div",
             { className: "flex items-center justify-between gap-3" },
-            e(ui.CardTitle, { className: "text-base" }, "Draft Suggestions"),
-            e(ui.Badge, { variant: "outline" }, `${suggestions.length} pending`),
+            e(ui.CardTitle, { className: "text-base" }, "Review Queue"),
+            e(
+              "div",
+              { className: "flex flex-wrap items-center justify-end gap-2" },
+              duplicateCopies > 0 ? e(ui.Badge, { variant: "secondary" }, `${duplicateCopies} duplicate copies grouped`) : null,
+              e(ui.Badge, { variant: "outline" }, `${groups.length} decisions`),
+            ),
           ),
         ),
         e(
@@ -166,15 +258,15 @@
           { className: "space-y-3" },
           loading
             ? e("div", { className: "text-sm text-muted-foreground" }, "Loading suggestions...")
-            : suggestions.length === 0
+            : groups.length === 0
               ? e("div", { className: "text-sm text-muted-foreground" }, "No draft suggestions are waiting for review.")
-              : suggestions.map((suggestion) =>
-                  e(SuggestionRow, {
-                    key: suggestion.suggestion_id,
-                    suggestion,
-                    busy: busyId === suggestion.suggestion_id,
+              : groups.map((group) =>
+                  e(ReviewGroup, {
+                    key: group.key,
+                    group,
+                    busy: group.suggestions.some((item) => busyId && busyId.includes(item.suggestion_id)),
                     onApprove: (id) => review(id, "approve"),
-                    onDismiss: (id) => review(id, "dismiss"),
+                    onDismissGroup: dismissGroup,
                   }),
                 ),
         ),

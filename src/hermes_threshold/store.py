@@ -124,6 +124,21 @@ class SQLiteStore:
     def record_wake_cycle(self, decision: WakeDecision, request: WakeRequest) -> None:
         action = decision.recommended_action
         with self.connect() as db:
+            suggestion_id: str | None = None
+            should_insert_suggestion = False
+            if action:
+                title = str(action.get("title", "Untitled suggestion"))
+                description = str(action.get("description", ""))
+                suggestion_id = action.get("suggestion_id") or self._find_drafted_suggestion_id(
+                    db,
+                    title,
+                    description,
+                )
+                if suggestion_id is None:
+                    suggestion_id = f"suggestion_{uuid.uuid4().hex}"
+                    should_insert_suggestion = True
+                action["suggestion_id"] = suggestion_id
+
             db.execute(
                 """
                 INSERT INTO wake_cycles (
@@ -151,9 +166,7 @@ class SQLiteStore:
                     json.dumps(action, sort_keys=True),
                 ),
             )
-            if action:
-                suggestion_id = action.get("suggestion_id") or f"suggestion_{uuid.uuid4().hex}"
-                action["suggestion_id"] = suggestion_id
+            if action and should_insert_suggestion:
                 db.execute(
                     """
                     INSERT INTO suggestions (
@@ -188,6 +201,28 @@ class SQLiteStore:
                         json.dumps(action, sort_keys=True),
                     ),
                 )
+
+    def _find_drafted_suggestion_id(
+        self,
+        db: sqlite3.Connection,
+        title: str,
+        description: str,
+    ) -> str | None:
+        row = db.execute(
+            """
+            SELECT suggestion_id
+            FROM suggestions
+            WHERE status = 'drafted'
+              AND title = ?
+              AND description = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (title, description),
+        ).fetchone()
+        if row is None:
+            return None
+        return str(row["suggestion_id"])
 
     def record_feedback(self, feedback: FeedbackRequest) -> str:
         feedback_id = f"feedback_{uuid.uuid4().hex}"

@@ -56,6 +56,10 @@ class FakeAsyncClient:
             return FakeResponse(200, {"suggestions": []})
         if url.endswith("/suggestions/suggestion_1/approve"):
             return FakeResponse(200, {"suggestion": {"status": "approved"}})
+        if url.endswith("/suggestions/suggestion_2/dismiss"):
+            return FakeResponse(200, {"suggestion": {"status": "dismissed"}})
+        if url.endswith("/suggestions/suggestion_3/dismiss"):
+            return FakeResponse(200, {"suggestion": {"status": "dismissed"}})
         return FakeResponse(200, {"status": "ok"})
 
 
@@ -79,11 +83,18 @@ def test_dashboard_plugin_proxies_threshold_with_env_file(tmp_path, monkeypatch)
         summary = client.get("/summary")
         suggestions = client.get("/suggestions?status=drafted&limit=10")
         approved = client.post("/suggestions/suggestion_1/approve")
+        dismissed = client.post(
+            "/suggestions/batch-dismiss",
+            json={"suggestion_ids": ["suggestion_2", "suggestion_3"]},
+        )
 
     assert summary.status_code == 200
     assert summary.json()["counts"]["wake_cycles"] == 3
     assert suggestions.status_code == 200
     assert approved.json()["suggestion"]["status"] == "approved"
+    assert dismissed.json()["count"] == 2
     assert FakeAsyncClient.requests[0]["url"] == "http://127.0.0.1:9999/trial-summary"
     assert FakeAsyncClient.requests[0]["headers"] == {"authorization": "Bearer secret-token"}
     assert FakeAsyncClient.requests[1]["params"] == {"limit": 10, "status": "drafted"}
+    assert FakeAsyncClient.requests[3]["url"] == "http://127.0.0.1:9999/suggestions/suggestion_2/dismiss"
+    assert FakeAsyncClient.requests[4]["url"] == "http://127.0.0.1:9999/suggestions/suggestion_3/dismiss"

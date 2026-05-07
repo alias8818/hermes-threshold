@@ -124,6 +124,23 @@ async def dismiss_suggestion(suggestion_id: str) -> Any:
     return await _proxy_json("POST", f"/suggestions/{suggestion_id}/dismiss")
 
 
+@router.post("/suggestions/batch-dismiss")
+async def batch_dismiss_suggestions(payload: dict[str, Any]) -> dict[str, Any]:
+    suggestion_ids = payload.get("suggestion_ids")
+    if not isinstance(suggestion_ids, list):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "suggestion_ids_required"},
+        )
+
+    updated: list[Any] = []
+    for suggestion_id in suggestion_ids:
+        if not isinstance(suggestion_id, str) or not suggestion_id:
+            continue
+        updated.append(await _proxy_json("POST", f"/suggestions/{suggestion_id}/dismiss"))
+    return {"updated": updated, "count": len(updated)}
+
+
 @router.post("/feedback")
 async def feedback(payload: dict[str, Any]) -> Any:
     return await _proxy_json("POST", "/feedback", json=payload)
