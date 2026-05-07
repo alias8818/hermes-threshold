@@ -6,8 +6,9 @@ from typing import AsyncIterator
 
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 
+from hermes_threshold.auth import require_api_token
 from hermes_threshold.config import Settings
 from hermes_threshold.engine import ThresholdEngine
 from hermes_threshold.models import (
@@ -16,6 +17,9 @@ from hermes_threshold.models import (
     FeedbackRequest,
     FeedbackResponse,
     HealthResponse,
+    SuggestionListResponse,
+    SuggestionReviewResponse,
+    TrialSummaryResponse,
     WakeDecision,
     WakeRequest,
 )
@@ -60,6 +64,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.scheduler = scheduler
 
+    async def authenticated(
+        authorization: str | None = Header(default=None),
+        x_hermes_threshold_token: str | None = Header(default=None),
+    ) -> None:
+        return await require_api_token(
+            resolved_settings,
+            authorization=authorization,
+            x_hermes_threshold_token=x_hermes_threshold_token,
+        )
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         store.init_schema()
@@ -70,11 +84,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             scheduler_enabled=resolved_settings.scheduler_enabled,
         )
 
-    @app.post("/wake", response_model=WakeDecision)
+    @app.post("/wake", response_model=WakeDecision, dependencies=[Depends(authenticated)])
     async def wake(request: WakeRequest) -> WakeDecision:
         return await engine.run_wake_cycle(request)
 
-    @app.post("/events", response_model=EventResponse)
+    @app.post("/events", response_model=EventResponse, dependencies=[Depends(authenticated)])
     async def record_event(request: EventRequest) -> EventResponse:
         event_id = store.record_activity(
             activity_type=request.event_type,
@@ -92,10 +106,76 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return EventResponse(status="recorded", event_id=event_id, wake_decision=wake_decision)
 
-    @app.post("/feedback", response_model=FeedbackResponse)
+    @app.post("/feedback", response_model=FeedbackResponse, dependencies=[Depends(authenticated)])
     async def record_feedback(request: FeedbackRequest) -> FeedbackResponse:
         feedback_id = store.record_feedback(request)
         return FeedbackResponse(status="recorded", feedback_id=feedback_id)
+
+    @app.get(
+        "/suggestions",
+        response_model=SuggestionListResponse,
+        dependencies=[Depends(authenticated)],
+    )
+    async def list_suggestions(
+        status: str | None = Query(default="drafted"),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> SuggestionListResponse:
+        return SuggestionListResponse(suggestions=store.list_suggestions(status, limit))
+
+    @app.post(
+        "/suggestions/{suggestion_id}/approve",
+        response_model=SuggestionReviewResponse,
+        dependencies=[Depends(authenticated)],
+    )
+    async def approve_suggestion(suggestion_id: str) -> SuggestionReviewResponse:
+        suggestion = store.update_suggestion_status(suggestion_id, "approved")
+        if suggestion is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Suggestion not found.",
+            )
+        return SuggestionReviewResponse(suggestion=suggestion)
+
+    @app.post(
+        "/suggestions/{suggestion_id}/dismiss",
+        response_model=SuggestionReviewResponse,
+        dependencies=[Depends(authenticated)],
+    )
+    async def dismiss_suggestion(suggestion_id: str) -> SuggestionReviewResponse:
+        suggestion = store.update_suggestion_status(suggestion_id, "dismissed")
+        if suggestion is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Suggestion not found.",
+            )
+        return SuggestionReviewResponse(suggestion=suggestion)
+
+    @app.get(
+        "/trial-summary",
+        response_model=TrialSummaryResponse,
+        dependencies=[Depends(authenticated)],
+    )
+    async def trial_summary() -> TrialSummaryResponse:
+        summary = store.trial_summary()
+        return TrialSummaryResponse(
+            counts={
+                key: summary[key]
+                for key in [
+                    "activity_log",
+                    "wake_cycles",
+                    "suggestions",
+                    "approvals",
+                    "feedback",
+                    "personality_versions",
+                    "budgets",
+                ]
+            },
+            drafted_suggestions=summary["drafted_suggestions"],
+            approved_suggestions=summary["approved_suggestions"],
+            dismissed_suggestions=summary["dismissed_suggestions"],
+            useful_feedback=summary["useful_feedback"],
+            annoyance_feedback=summary["annoyance_feedback"],
+        )
 
     return app
 

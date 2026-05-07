@@ -107,3 +107,95 @@ def test_feedback_records_rating(tmp_path):
     assert response.status_code == 200
     assert response.json()["feedback_id"].startswith("feedback_")
     assert app.state.store.table_counts()["feedback"] == 1
+
+
+def test_auth_required_for_mutating_routes(tmp_path):
+    app = create_app(
+        Settings(
+            db_path=tmp_path / "test.sqlite3",
+            scheduler_enabled=False,
+            auth_required=True,
+            api_token="test-token",
+        )
+    )
+
+    with TestClient(app) as client:
+        unauthorized = client.post(
+            "/events",
+            json={"event_type": "note", "payload": {}},
+        )
+        authorized = client.post(
+            "/events",
+            headers={"authorization": "Bearer test-token"},
+            json={"event_type": "note", "payload": {}},
+        )
+
+    assert unauthorized.status_code == 401
+    assert authorized.status_code == 200
+
+
+def test_suggestion_review_flow(tmp_path):
+    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+
+    with TestClient(app) as client:
+        wake = client.post(
+            "/wake",
+            json={
+                "reason": "manual",
+                "dry_run": True,
+                "event": {"topic": "action tiers"},
+            },
+        ).json()
+        suggestion_id = wake["recommended_action"]["suggestion_id"]
+
+        drafted = client.get("/suggestions?status=drafted")
+        approved = client.post(f"/suggestions/{suggestion_id}/approve")
+        no_drafts = client.get("/suggestions?status=drafted")
+        approved_list = client.get("/suggestions?status=approved")
+
+    assert drafted.status_code == 200
+    assert drafted.json()["suggestions"][0]["suggestion_id"] == suggestion_id
+    assert approved.status_code == 200
+    assert approved.json()["suggestion"]["status"] == "approved"
+    assert no_drafts.json()["suggestions"] == []
+    assert approved_list.json()["suggestions"][0]["suggestion_id"] == suggestion_id
+
+
+def test_missing_suggestion_review_returns_404(tmp_path):
+    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+
+    with TestClient(app) as client:
+        response = client.post("/suggestions/missing/approve")
+
+    assert response.status_code == 404
+
+
+def test_trial_summary_counts_review_and_feedback(tmp_path):
+    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+
+    with TestClient(app) as client:
+        wake = client.post(
+            "/wake",
+            json={
+                "reason": "manual",
+                "dry_run": True,
+                "event": {"topic": "action tiers"},
+            },
+        ).json()
+        suggestion_id = wake["recommended_action"]["suggestion_id"]
+        client.post(f"/suggestions/{suggestion_id}/dismiss")
+        client.post(
+            "/feedback",
+            json={
+                "cycle_id": wake["cycle_id"],
+                "suggestion_id": suggestion_id,
+                "rating": "too_much",
+            },
+        )
+        response = client.get("/trial-summary")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["counts"]["wake_cycles"] == 1
+    assert payload["dismissed_suggestions"] == 1
+    assert payload["annoyance_feedback"] == 1

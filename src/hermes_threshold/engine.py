@@ -6,6 +6,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from hermes_threshold.config import Settings
+from hermes_threshold.honcho_client import HonchoReadOnlyContext
 from hermes_threshold.models import WakeDecision, WakeRequest
 from hermes_threshold.store import SQLiteStore
 
@@ -14,6 +15,7 @@ class ThresholdEngine:
     def __init__(self, settings: Settings, store: SQLiteStore):
         self.settings = settings
         self.store = store
+        self.honcho = HonchoReadOnlyContext(settings)
 
     async def run_wake_cycle(self, request: WakeRequest) -> WakeDecision:
         cycle_id = f"cycle_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
@@ -88,19 +90,12 @@ class ThresholdEngine:
         }
 
     def _retrieve_memory_context(self, request: WakeRequest) -> dict[str, Any]:
-        return {
-            "peer_card": {
-                "workspace_id": self.settings.workspace_id,
-                "user_peer_id": self.settings.user_peer_id,
-            },
-            "peer_context_summary": "Hermes Threshold is implementing a restrained autonomy gate.",
-            "open_loops": [
-                "Define action tiers.",
-                "Keep notifications budgeted.",
-                "Store structured wake-cycle audit logs.",
-            ],
-            "event": request.event,
-        }
+        context = self.honcho.retrieve(request)
+        context.setdefault("peer_card", [])
+        context.setdefault("peer_context_summary", "")
+        context.setdefault("open_loops", [])
+        context.setdefault("event", request.event)
+        return context
 
     def _generate_candidates(
         self,

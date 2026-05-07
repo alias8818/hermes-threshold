@@ -61,3 +61,30 @@ class EventResponse(BaseModel):
 class FeedbackResponse(BaseModel):
     status: Literal["recorded"]
     feedback_id: str
+
+
+class Suggestion(BaseModel):
+    suggestion_id: str
+    cycle_id: str
+    created_at: datetime
+    title: str
+    description: str
+    status: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class SuggestionListResponse(BaseModel):
+    suggestions: list[Suggestion]
+
+
+class SuggestionReviewResponse(BaseModel):
+    suggestion: Suggestion
+
+
+class TrialSummaryResponse(BaseModel):
+    counts: dict[str, int]
+    drafted_suggestions: int
+    approved_suggestions: int
+    dismissed_suggestions: int
+    useful_feedback: int
+    annoyance_feedback: int

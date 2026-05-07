@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from hermes_threshold.models import FeedbackRequest, WakeDecision, WakeRequest
+from hermes_threshold.models import FeedbackRequest, Suggestion, WakeDecision, WakeRequest
 
 
 def utc_now() -> datetime:
@@ -210,6 +210,51 @@ class SQLiteStore:
             )
         return feedback_id
 
+    def list_suggestions(self, status: str | None = None, limit: int = 50) -> list[Suggestion]:
+        query = """
+            SELECT suggestion_id, cycle_id, created_at, title, description, status, payload_json
+            FROM suggestions
+        """
+        params: list[Any] = []
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self.connect() as db:
+            rows = db.execute(query, params).fetchall()
+        return [self._suggestion_from_row(row) for row in rows]
+
+    def update_suggestion_status(self, suggestion_id: str, status: str) -> Suggestion | None:
+        with self.connect() as db:
+            row = db.execute(
+                """
+                SELECT suggestion_id
+                FROM suggestions
+                WHERE suggestion_id = ?
+                """,
+                (suggestion_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            db.execute(
+                """
+                UPDATE suggestions
+                SET status = ?
+                WHERE suggestion_id = ?
+                """,
+                (status, suggestion_id),
+            )
+            updated = db.execute(
+                """
+                SELECT suggestion_id, cycle_id, created_at, title, description, status, payload_json
+                FROM suggestions
+                WHERE suggestion_id = ?
+                """,
+                (suggestion_id,),
+            ).fetchone()
+        return self._suggestion_from_row(updated)
+
     def notification_count_for(self, day: date) -> int:
         with self.connect() as db:
             row = db.execute(
@@ -239,3 +284,41 @@ class SQLiteStore:
                 table: int(db.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()["count"])
                 for table in tables
             }
+
+    def trial_summary(self) -> dict[str, int]:
+        counts = self.table_counts()
+        with self.connect() as db:
+            drafted = db.execute(
+                "SELECT COUNT(*) AS count FROM suggestions WHERE status = 'drafted'"
+            ).fetchone()["count"]
+            approved = db.execute(
+                "SELECT COUNT(*) AS count FROM suggestions WHERE status = 'approved'"
+            ).fetchone()["count"]
+            dismissed = db.execute(
+                "SELECT COUNT(*) AS count FROM suggestions WHERE status = 'dismissed'"
+            ).fetchone()["count"]
+            useful = db.execute(
+                "SELECT COUNT(*) AS count FROM feedback WHERE rating IN ('useful', 'save')"
+            ).fetchone()["count"]
+            annoyance = db.execute(
+                "SELECT COUNT(*) AS count FROM feedback WHERE rating IN ('not_useful', 'too_much', 'wrong_memory')"
+            ).fetchone()["count"]
+        return {
+            **counts,
+            "drafted_suggestions": int(drafted),
+            "approved_suggestions": int(approved),
+            "dismissed_suggestions": int(dismissed),
+            "useful_feedback": int(useful),
+            "annoyance_feedback": int(annoyance),
+        }
+
+    def _suggestion_from_row(self, row: sqlite3.Row) -> Suggestion:
+        return Suggestion(
+            suggestion_id=str(row["suggestion_id"]),
+            cycle_id=str(row["cycle_id"]),
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+            title=str(row["title"]),
+            description=str(row["description"]),
+            status=str(row["status"]),
+            payload=json.loads(str(row["payload_json"])),
+        )

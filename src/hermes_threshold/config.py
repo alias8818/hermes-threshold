@@ -34,6 +34,11 @@ class Settings:
     quiet_hours_start: int = 21
     quiet_hours_end: int = 7
     min_minutes_between_notifications: int = 240
+    api_token: str | None = None
+    auth_required: bool = False
+    honcho_api_key: str | None = None
+    honcho_environment: str = "production"
+    honcho_context_query: str = "Hermes autonomy preferences current projects approval workflow"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -71,5 +76,19 @@ class Settings:
             min_minutes_between_notifications=_env_int(
                 "HERMES_THRESHOLD_MIN_MINUTES_BETWEEN_NOTIFICATIONS",
                 cls.min_minutes_between_notifications,
+            ),
+            api_token=os.getenv("HERMES_THRESHOLD_API_TOKEN"),
+            auth_required=_env_bool(
+                "HERMES_THRESHOLD_AUTH_REQUIRED",
+                bool(os.getenv("HERMES_THRESHOLD_API_TOKEN")),
+            ),
+            honcho_api_key=os.getenv("HONCHO_API_KEY"),
+            honcho_environment=os.getenv(
+                "HONCHO_ENVIRONMENT",
+                cls.honcho_environment,
+            ),
+            honcho_context_query=os.getenv(
+                "HERMES_THRESHOLD_HONCHO_CONTEXT_QUERY",
+                cls.honcho_context_query,
             ),
         )
