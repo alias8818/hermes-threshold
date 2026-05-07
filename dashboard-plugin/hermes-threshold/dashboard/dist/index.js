@@ -86,7 +86,7 @@
     const copyCount = group.suggestions.length;
     const title = group.title || latest.suggestion_id;
     const rationale = group.description || latest.description || "";
-    const copyLabel = copyCount === 1 ? "1 draft" : `${copyCount} duplicate drafts`;
+    const copyLabel = copyCount === 1 ? "1 draft" : `${copyCount} copies`;
     return e(
       "div",
       { className: "rounded-md border bg-background p-4" },
@@ -201,6 +201,7 @@
 
     const groups = groupSuggestions(suggestions);
     const duplicateCopies = suggestions.length - groups.length;
+    const decisionLabel = groups.length === 1 ? "1 decision" : `${groups.length} decisions`;
 
     return e(
       "div",
@@ -249,7 +250,7 @@
               "div",
               { className: "flex flex-wrap items-center justify-end gap-2" },
               duplicateCopies > 0 ? e(ui.Badge, { variant: "secondary" }, `${duplicateCopies} duplicate copies grouped`) : null,
-              e(ui.Badge, { variant: "outline" }, `${groups.length} decisions`),
+              e(ui.Badge, { variant: "outline" }, decisionLabel),
             ),
           ),
         ),
