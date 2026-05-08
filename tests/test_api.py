@@ -8,8 +8,19 @@ from hermes_threshold.app import create_app
 from hermes_threshold.config import Settings
 
 
+def make_settings(tmp_path, **overrides):
+    values = {
+        "db_path": tmp_path / "test.sqlite3",
+        "scheduler_enabled": False,
+        "quiet_hours_start": 0,
+        "quiet_hours_end": 0,
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
 def test_health_initializes_database(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         response = client.get("/health")
@@ -24,7 +35,7 @@ def test_health_initializes_database(tmp_path):
 
 
 def test_wake_dry_run_records_draft_suggestion(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         response = client.post(
@@ -49,7 +60,7 @@ def test_wake_dry_run_records_draft_suggestion(tmp_path):
 
 
 def test_scheduled_wake_without_context_sleeps(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         response = client.post("/wake", json={"reason": "scheduled", "dry_run": True})
@@ -61,7 +72,7 @@ def test_scheduled_wake_without_context_sleeps(tmp_path):
 
 
 def test_event_can_trigger_dry_run_wake(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         response = client.post(
@@ -86,7 +97,7 @@ def test_event_can_trigger_dry_run_wake(tmp_path):
 
 
 def test_feedback_records_rating(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         wake = client.post(
@@ -113,9 +124,8 @@ def test_feedback_records_rating(tmp_path):
 
 def test_auth_required_for_mutating_routes(tmp_path):
     app = create_app(
-        Settings(
-            db_path=tmp_path / "test.sqlite3",
-            scheduler_enabled=False,
+        make_settings(
+            tmp_path,
             auth_required=True,
             api_token="test-token",
         )
@@ -137,7 +147,7 @@ def test_auth_required_for_mutating_routes(tmp_path):
 
 
 def test_suggestion_review_flow(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         wake = client.post(
@@ -164,7 +174,7 @@ def test_suggestion_review_flow(tmp_path):
 
 
 def test_repeated_draft_reuses_existing_drafted_suggestion(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         first = client.post(
@@ -194,7 +204,7 @@ def test_repeated_draft_reuses_existing_drafted_suggestion(tmp_path):
 
 
 def test_dismissed_suggestion_is_not_resurfaced_as_new_draft(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         first = client.post(
@@ -229,7 +239,7 @@ def test_dismissed_suggestion_is_not_resurfaced_as_new_draft(tmp_path):
 
 
 def test_missing_suggestion_review_returns_404(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         response = client.post("/suggestions/missing/approve")
@@ -238,7 +248,7 @@ def test_missing_suggestion_review_returns_404(tmp_path):
 
 
 def test_trial_summary_counts_review_and_feedback(tmp_path):
-    app = create_app(Settings(db_path=tmp_path / "test.sqlite3", scheduler_enabled=False))
+    app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
         wake = client.post(
@@ -270,8 +280,8 @@ def test_trial_summary_counts_review_and_feedback(tmp_path):
 
 def test_scheduler_job_uses_draftable_trial_event(tmp_path):
     app = create_app(
-        Settings(
-            db_path=tmp_path / "test.sqlite3",
+        make_settings(
+            tmp_path,
             scheduler_enabled=True,
             scheduler_interval_seconds=3600,
             scheduler_jitter_seconds=0,
