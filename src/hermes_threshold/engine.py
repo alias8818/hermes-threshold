@@ -28,7 +28,11 @@ class ThresholdEngine:
     async def run_wake_cycle(self, request: WakeRequest) -> WakeDecision:
         cycle_id = f"cycle_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
 
-        if self._is_quiet_now() and request.reason != "manual":
+        if (
+            self._is_quiet_now()
+            and request.reason != "manual"
+            and (request.reason == "scheduled" or not request.dry_run)
+        ):
             decision = self._decision(
                 cycle_id=cycle_id,
                 decision="reflect_only",

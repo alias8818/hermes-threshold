@@ -57,6 +57,32 @@ def test_quiet_hours_reflects_only(tmp_path):
     assert "Quiet hours" in decision.reason_summary
 
 
+def test_quiet_hours_allow_dry_run_event_drafts(tmp_path):
+    store = SQLiteStore(tmp_path / "test.sqlite3")
+    store.init_schema()
+    engine = ThresholdEngine(
+        Settings(
+            db_path=tmp_path / "test.sqlite3",
+            quiet_hours_start=0,
+            quiet_hours_end=23,
+        ),
+        store,
+    )
+
+    decision = asyncio.run(
+        engine.run_wake_cycle(
+            WakeRequest(
+                reason="event:follow_up_request",
+                dry_run=True,
+                event={"thread_id": "quiet-follow-up"},
+            )
+        )
+    )
+
+    assert decision.decision == "draft_only"
+    assert decision.recommended_action["suppression_key"] == "follow-up:quiet-follow-up"
+
+
 def test_suppression_key_reuses_dismissed_suggestion_across_copy_changes(tmp_path):
     store = SQLiteStore(tmp_path / "test.sqlite3")
     store.init_schema()
