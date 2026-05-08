@@ -42,6 +42,11 @@ drafted suggestions for review. Outbound autonomous messaging remains disabled.
 The `hermes-threshold-review` CLI provides the same review path for Hermes CLI
 integration or operator testing.
 
+The accelerated random-wake trial is complete. See
+[docs/trial-readout.md](docs/trial-readout.md) for the readout. Keep
+`HERMES_THRESHOLD_SCHEDULER_ENABLED=0` until Threshold is fed higher-signal
+Hermes events.
+
 ## Test
 
 ```bash
@@ -53,4 +58,6 @@ uv run --extra dev pytest
 This repository is not yet a production Hermes plugin. It implements the
 planning document's initial FastAPI, persistence, wake-cycle, and structured
 feedback milestones. External dispatch, LLM candidate generation, and approval
-UI integration remain behind explicit implementation boundaries.
+UI integration remain behind explicit implementation boundaries. The current
+continuation path is event-driven drafting with stable suppression keys for
+dismissed ideas, not another random-wake trial.

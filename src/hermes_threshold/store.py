@@ -60,6 +60,7 @@ class SQLiteStore:
                     created_at TEXT NOT NULL,
                     title TEXT NOT NULL,
                     description TEXT NOT NULL,
+                    suppression_key TEXT,
                     status TEXT NOT NULL,
                     payload_json TEXT NOT NULL
                 );
@@ -95,6 +96,27 @@ class SQLiteStore:
                 );
                 """
             )
+            self._ensure_column(db, "suggestions", "suppression_key", "TEXT")
+            db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_suggestions_suppression_key
+                ON suggestions(suppression_key)
+                """
+            )
+
+    def _ensure_column(
+        self,
+        db: sqlite3.Connection,
+        table: str,
+        column: str,
+        definition: str,
+    ) -> None:
+        columns = {
+            str(row["name"])
+            for row in db.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def record_activity(
         self,
@@ -129,10 +151,14 @@ class SQLiteStore:
             if action:
                 title = str(action.get("title", "Untitled suggestion"))
                 description = str(action.get("description", ""))
+                suppression_key = action.get("suppression_key")
+                if suppression_key is not None:
+                    suppression_key = str(suppression_key)
                 existing_suggestion = self._find_existing_suggestion(
                     db,
                     title,
                     description,
+                    suppression_key,
                 )
                 provided_suggestion_id = action.get("suggestion_id")
                 suggestion_id = provided_suggestion_id or existing_suggestion["suggestion_id"]
@@ -177,9 +203,9 @@ class SQLiteStore:
                     """
                     INSERT INTO suggestions (
                         suggestion_id, cycle_id, created_at, title,
-                        description, status, payload_json
+                        description, suppression_key, status, payload_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         suggestion_id,
@@ -187,6 +213,7 @@ class SQLiteStore:
                         decision.created_at.isoformat(),
                         str(action.get("title", "Untitled suggestion")),
                         str(action.get("description", "")),
+                        action.get("suppression_key"),
                         "drafted",
                         json.dumps(action, sort_keys=True),
                     ),
@@ -213,7 +240,29 @@ class SQLiteStore:
         db: sqlite3.Connection,
         title: str,
         description: str,
+        suppression_key: str | None,
     ) -> dict[str, str | None]:
+        if suppression_key:
+            row = db.execute(
+                """
+                SELECT suggestion_id, status
+                FROM suggestions
+                WHERE suppression_key = ?
+                ORDER BY
+                  CASE status
+                    WHEN 'drafted' THEN 0
+                    WHEN 'dismissed' THEN 1
+                    WHEN 'approved' THEN 2
+                    ELSE 3
+                  END,
+                  created_at DESC
+                LIMIT 1
+                """,
+                (suppression_key,),
+            ).fetchone()
+            if row is not None:
+                return {"suggestion_id": str(row["suggestion_id"]), "status": str(row["status"])}
+
         row = db.execute(
             """
             SELECT suggestion_id, status

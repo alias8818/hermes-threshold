@@ -71,7 +71,7 @@ def test_scheduled_wake_without_context_sleeps(tmp_path):
     assert "no fresh event context" in payload["reason_summary"]
 
 
-def test_event_can_trigger_dry_run_wake(tmp_path):
+def test_low_signal_event_is_recorded_without_draft(tmp_path):
     app = create_app(make_settings(tmp_path))
 
     with TestClient(app) as client:
@@ -84,16 +84,47 @@ def test_event_can_trigger_dry_run_wake(tmp_path):
                 "trigger_wake": True,
             },
         )
+        drafted = client.get("/suggestions?status=drafted")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "recorded"
     assert payload["event_id"].startswith("activity_")
-    assert payload["wake_decision"]["decision"] == "draft_only"
+    assert payload["wake_decision"]["decision"] == "sleep"
+    assert "not a high-signal Threshold input" in payload["wake_decision"]["reason_summary"]
+    assert drafted.json()["suggestions"] == []
 
     counts = app.state.store.table_counts()
     assert counts["activity_log"] == 1
     assert counts["wake_cycles"] == 1
+    assert counts["suggestions"] == 0
+
+
+def test_high_signal_event_can_trigger_dry_run_wake(tmp_path):
+    app = create_app(make_settings(tmp_path))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/events",
+            json={
+                "event_type": "follow_up_request",
+                "source": "test",
+                "payload": {
+                    "note": "follow up on Threshold event categories",
+                    "thread_id": "threshold-event-categories",
+                },
+                "trigger_wake": True,
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["wake_decision"]["decision"] == "draft_only"
+    assert payload["wake_decision"]["recommended_action"]["title"] == "Capture follow-up"
+    assert (
+        payload["wake_decision"]["recommended_action"]["suppression_key"]
+        == "follow-up:threshold-event-categories"
+    )
 
 
 def test_feedback_records_rating(tmp_path):

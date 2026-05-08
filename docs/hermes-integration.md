@@ -1,14 +1,15 @@
 # Hermes Integration Contract
 
-Hermes Threshold is a local review gate. Hermes should call it, read drafted
-suggestions, and surface reviewable items to the user. Hermes Threshold should
-not send autonomous outbound notifications in the current integration phase.
+Hermes Threshold is a local review gate. Hermes should call it for high-signal
+events, read drafted suggestions, and surface reviewable items to the user.
+Hermes Threshold should not send autonomous outbound notifications in the
+current integration phase.
 
 ## Call Path
 
 Use this path first:
 
-1. Hermes sends noteworthy context to `POST /events`.
+1. Hermes sends high-signal context to `POST /events`.
 2. Hermes includes `trigger_wake=true` only when it wants an immediate dry-run
    threshold decision.
 3. Hermes reads reviewable drafts from `GET /suggestions?status=drafted`.
@@ -20,6 +21,29 @@ Use this path first:
 
 This keeps Hermes in control of presentation while Hermes Threshold owns
 scoring, safety gating, and audit persistence.
+
+## Event Types
+
+Use these event types first:
+
+- `remember_this`: the user explicitly asks Hermes to remember something.
+- `follow_up_request`: the user asks Hermes to follow up later.
+- `open_loop_detected`: Hermes identifies an unresolved promise, task, or
+  decision.
+- `project_state_changed`: a project or task changes state in a way Hermes may
+  need to remember.
+- `suggestion_reviewed`: the user approves or dismisses a prior Threshold
+  suggestion.
+
+Lower-signal events may still be recorded for audit, but they should not create
+review drafts by default. Threshold should answer "is this real event worth
+drafting for review?" rather than inventing proactive ideas on a timer.
+
+When Hermes already has a stable semantic identifier, include
+`payload.suppression_key`. Otherwise Threshold derives one from `thread_id`,
+`project_id`, `task_id`, `topic`, or `note`. Dismissed suggestions are
+suppressed by this key so copy changes do not resurface the same idea as a new
+draft.
 
 ## Authentication
 
@@ -99,8 +123,13 @@ Honcho in this phase.
 
 ## Controlled Trial
 
-For the first trial, leave outbound notifications disabled and review drafts
-manually once per day:
+The accelerated random-wake trial is complete; see
+[trial-readout.md](trial-readout.md). Leave
+`HERMES_THRESHOLD_SCHEDULER_ENABLED=0` until real Hermes event signals are wired
+in.
+
+If a future controlled trial is needed, leave outbound notifications disabled
+and review drafts manually once per day:
 
 ```bash
 curl -fsS http://127.0.0.1:8789/suggestions?status=drafted \

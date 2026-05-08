@@ -12,6 +12,14 @@ from hermes_threshold.store import SQLiteStore
 
 
 class ThresholdEngine:
+    HIGH_SIGNAL_EVENT_TYPES = {
+        "remember_this",
+        "follow_up_request",
+        "open_loop_detected",
+        "project_state_changed",
+        "suggestion_reviewed",
+    }
+
     def __init__(self, settings: Settings, store: SQLiteStore):
         self.settings = settings
         self.store = store
@@ -77,6 +85,16 @@ class ThresholdEngine:
                 "interruption_cost": 4,
                 "reason": "Scheduled wake had no fresh event context, so Hermes should sleep.",
             }
+        event_type = self._event_type(request)
+        if request.reason.startswith("event:") and event_type not in self.HIGH_SIGNAL_EVENT_TYPES:
+            return {
+                "should_continue": False,
+                "interruption_cost": 2,
+                "reason": (
+                    f"Event type '{event_type}' is not a high-signal Threshold input; "
+                    "recorded for audit without drafting."
+                ),
+            }
         if self.store.notification_count_for(datetime.now(UTC).date()) >= self.settings.max_notifications_per_day:
             return {
                 "should_continue": True,
@@ -97,12 +115,103 @@ class ThresholdEngine:
         context.setdefault("event", request.event)
         return context
 
+    def _event_type(self, request: WakeRequest) -> str:
+        if request.reason.startswith("event:"):
+            return request.reason.split(":", 1)[1]
+        event_type = request.event.get("event_type")
+        if event_type:
+            return str(event_type)
+        if request.reason == "scheduled":
+            return "scheduled"
+        return request.reason
+
     def _generate_candidates(
         self,
         memory_context: dict[str, Any],
         request: WakeRequest,
     ) -> list[dict[str, Any]]:
         event_text = " ".join(str(value).lower() for value in request.event.values())
+        event_type = self._event_type(request)
+        if event_type == "remember_this":
+            return [
+                {
+                    "title": "Capture Hermes memory candidate",
+                    "description": "Draft a reviewable memory note from an explicit user remember-this request.",
+                    "detail": "Preserve the requested memory as a draft so Hermes can review it before treating it as durable preference or project context.",
+                    "why_now": "The user explicitly asked Hermes to remember something.",
+                    "acceptance_hint": "Approve if this should become durable Hermes context.",
+                    "dismissal_hint": "Dismiss if this was temporary, already captured, or not worth keeping.",
+                    "suppression_key": self._suppression_key("memory", request),
+                    "value_score": 9,
+                    "novelty_score": 7,
+                    "risk_score": 3,
+                    "surface": "memory_review",
+                }
+            ]
+        if event_type == "follow_up_request":
+            return [
+                {
+                    "title": "Capture follow-up",
+                    "description": "Draft a follow-up reminder from an explicit user request.",
+                    "detail": "Record the requested follow-up with enough context for Hermes to bring it back at the right time instead of relying on random wake cycles.",
+                    "why_now": "The user asked for a follow-up.",
+                    "acceptance_hint": "Approve if Hermes should track this as an open follow-up.",
+                    "dismissal_hint": "Dismiss if the follow-up is no longer needed or lacks enough context.",
+                    "suppression_key": self._suppression_key("follow-up", request),
+                    "value_score": 9,
+                    "novelty_score": 6,
+                    "risk_score": 2,
+                    "surface": "follow_up_review",
+                }
+            ]
+        if event_type == "open_loop_detected":
+            return [
+                {
+                    "title": "Review open loop",
+                    "description": "Draft a check on an unresolved Hermes task, promise, or decision.",
+                    "detail": "Ask whether the detected open loop should be preserved, closed, or converted into a concrete follow-up.",
+                    "why_now": "Hermes detected an unresolved loop in recent context.",
+                    "acceptance_hint": "Approve if this open loop is real and should stay visible.",
+                    "dismissal_hint": "Dismiss if this is stale, already closed, or not actionable.",
+                    "suppression_key": self._suppression_key("open-loop", request),
+                    "value_score": 8,
+                    "novelty_score": 6,
+                    "risk_score": 2,
+                    "surface": "open_loop_review",
+                }
+            ]
+        if event_type == "project_state_changed":
+            return [
+                {
+                    "title": "Review project state change",
+                    "description": "Draft a review note for a meaningful project or task state change.",
+                    "detail": "Check whether Hermes should remember this state change, update an open loop, or stop tracking stale work.",
+                    "why_now": "A project or task state changed.",
+                    "acceptance_hint": "Approve if this change should affect future Hermes context.",
+                    "dismissal_hint": "Dismiss if the change is routine or not useful for Hermes behavior.",
+                    "suppression_key": self._suppression_key("project-state", request),
+                    "value_score": 8,
+                    "novelty_score": 5,
+                    "risk_score": 2,
+                    "surface": "project_review",
+                }
+            ]
+        if event_type == "suggestion_reviewed":
+            return [
+                {
+                    "title": "Reflect on suggestion review",
+                    "description": "Record what the approval or dismissal means for future Threshold drafting.",
+                    "detail": "Use the review outcome as a restraint or usefulness signal before drafting similar suggestions again.",
+                    "why_now": "The user reviewed a prior Threshold suggestion.",
+                    "acceptance_hint": "Approve if this review signal should tune future Threshold behavior.",
+                    "dismissal_hint": "Dismiss if no behavior change is needed.",
+                    "suppression_key": self._suppression_key("review-signal", request),
+                    "value_score": 7,
+                    "novelty_score": 4,
+                    "risk_score": 1,
+                    "surface": "threshold_feedback",
+                }
+            ]
         if "approval" in event_text or "external action" in event_text:
             return [
                 {
@@ -112,6 +221,7 @@ class ThresholdEngine:
                     "why_now": "The wake event mentioned approval-sensitive or external action context.",
                     "acceptance_hint": "Approve only if this approval gate should become part of the Hermes behavior backlog.",
                     "dismissal_hint": "Dismiss if this is just test noise or not relevant to the current Hermes policy work.",
+                    "suppression_key": self._suppression_key("approval-gate", request),
                     "value_score": 8,
                     "novelty_score": 6,
                     "risk_score": 5,
@@ -127,6 +237,7 @@ class ThresholdEngine:
                     "why_now": "The wake event suggested annoyance, stress, or potentially intrusive behavior.",
                     "acceptance_hint": "Approve if Hermes should remember this as a restraint rule.",
                     "dismissal_hint": "Dismiss if the signal was not real user discomfort.",
+                    "suppression_key": self._suppression_key("restraint", request),
                     "value_score": 7,
                     "novelty_score": 5,
                     "risk_score": 7,
@@ -141,12 +252,26 @@ class ThresholdEngine:
                 "why_now": "The controlled-trial scheduler is exercising the default low-risk candidate path for autonomy policy design.",
                 "acceptance_hint": "Approve if you want to preserve this policy-design task for Hermes behavior work.",
                 "dismissal_hint": "Dismiss if this repeated trial item is not useful or has already been handled.",
+                "suppression_key": self._suppression_key("action-tiers", request),
                 "value_score": 8,
                 "novelty_score": 6,
                 "risk_score": 2,
                 "surface": "draft",
             }
         ]
+
+    def _suppression_key(self, prefix: str, request: WakeRequest) -> str:
+        subject = (
+            request.event.get("suppression_key")
+            or request.event.get("thread_id")
+            or request.event.get("project_id")
+            or request.event.get("task_id")
+            or request.event.get("topic")
+            or request.event.get("note")
+            or prefix
+        )
+        normalized = "-".join(str(subject).lower().split())[:96]
+        return f"{prefix}:{normalized}"
 
     def _decide(
         self,

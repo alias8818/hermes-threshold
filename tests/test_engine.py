@@ -55,3 +55,57 @@ def test_quiet_hours_reflects_only(tmp_path):
 
     assert decision.decision == "reflect_only"
     assert "Quiet hours" in decision.reason_summary
+
+
+def test_suppression_key_reuses_dismissed_suggestion_across_copy_changes(tmp_path):
+    store = SQLiteStore(tmp_path / "test.sqlite3")
+    store.init_schema()
+    engine = ThresholdEngine(Settings(db_path=tmp_path / "test.sqlite3"), store)
+    request = WakeRequest(
+        reason="event:follow_up_request",
+        dry_run=True,
+        event={"thread_id": "same-follow-up"},
+    )
+
+    first = engine._decision(
+        cycle_id="cycle_first",
+        decision="draft_only",
+        confidence=0.8,
+        user_value_score=8,
+        interruption_cost_score=3,
+        novelty_score=5,
+        memory_confidence=0.7,
+        safety_risk="low",
+        reason_summary="Draft a follow-up.",
+        recommended_action={
+            "title": "Capture follow-up",
+            "description": "Original follow-up copy.",
+            "suppression_key": "follow-up:same-follow-up",
+        },
+    )
+    second = engine._decision(
+        cycle_id="cycle_second",
+        decision="draft_only",
+        confidence=0.8,
+        user_value_score=8,
+        interruption_cost_score=3,
+        novelty_score=5,
+        memory_confidence=0.7,
+        safety_risk="low",
+        reason_summary="Draft a follow-up.",
+        recommended_action={
+            "title": "Capture follow-up",
+            "description": "Reworded follow-up copy.",
+            "suppression_key": "follow-up:same-follow-up",
+        },
+    )
+
+    store.record_wake_cycle(first, request)
+    suggestion_id = first.recommended_action["suggestion_id"]
+    store.update_suggestion_status(suggestion_id, "dismissed")
+    store.record_wake_cycle(second, request)
+
+    assert second.recommended_action["suggestion_id"] == suggestion_id
+    assert second.recommended_action["existing_suggestion_status"] == "dismissed"
+    assert store.trial_summary()["drafted_suggestions"] == 0
+    assert store.trial_summary()["dismissed_suggestions"] == 1
