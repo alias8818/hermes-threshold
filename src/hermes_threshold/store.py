@@ -262,6 +262,7 @@ class SQLiteStore:
             ).fetchone()
             if row is not None:
                 return {"suggestion_id": str(row["suggestion_id"]), "status": str(row["status"])}
+            return {"suggestion_id": None, "status": None}
 
         row = db.execute(
             """

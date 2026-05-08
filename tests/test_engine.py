@@ -135,3 +135,52 @@ def test_suppression_key_reuses_dismissed_suggestion_across_copy_changes(tmp_pat
     assert second.recommended_action["existing_suggestion_status"] == "dismissed"
     assert store.trial_summary()["drafted_suggestions"] == 0
     assert store.trial_summary()["dismissed_suggestions"] == 1
+
+
+def test_different_suppression_keys_do_not_collapse_same_copy(tmp_path):
+    store = SQLiteStore(tmp_path / "test.sqlite3")
+    store.init_schema()
+    engine = ThresholdEngine(Settings(db_path=tmp_path / "test.sqlite3"), store)
+    request = WakeRequest(reason="event:follow_up_request", dry_run=True)
+
+    first = engine._decision(
+        cycle_id="cycle_first",
+        decision="draft_only",
+        confidence=0.8,
+        user_value_score=8,
+        interruption_cost_score=3,
+        novelty_score=5,
+        memory_confidence=0.7,
+        safety_risk="low",
+        reason_summary="Draft a follow-up.",
+        recommended_action={
+            "title": "Capture follow-up",
+            "description": "Draft a follow-up reminder from an explicit user request.",
+            "suppression_key": "follow-up:first",
+        },
+    )
+    second = engine._decision(
+        cycle_id="cycle_second",
+        decision="draft_only",
+        confidence=0.8,
+        user_value_score=8,
+        interruption_cost_score=3,
+        novelty_score=5,
+        memory_confidence=0.7,
+        safety_risk="low",
+        reason_summary="Draft a follow-up.",
+        recommended_action={
+            "title": "Capture follow-up",
+            "description": "Draft a follow-up reminder from an explicit user request.",
+            "suppression_key": "follow-up:second",
+        },
+    )
+
+    store.record_wake_cycle(first, request)
+    store.update_suggestion_status(first.recommended_action["suggestion_id"], "dismissed")
+    store.record_wake_cycle(second, request)
+
+    assert second.recommended_action["suggestion_id"] != first.recommended_action["suggestion_id"]
+    assert "existing_suggestion_status" not in second.recommended_action
+    assert store.trial_summary()["drafted_suggestions"] == 1
+    assert store.trial_summary()["dismissed_suggestions"] == 1
